@@ -1,0 +1,42 @@
+name: Grade skills
+
+# These development skills are graded by Rubrkit, one bundle per skill. A skill
+# scoring below 75 fails this check. See https://www.rubrkit.com/ci-quality-gates.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  grade:
+    runs-on: ubuntu-latest
+    strategy:
+      # One skill's regression must not cancel the others' grading.
+      fail-fast: false
+      matrix:
+        include:
+          - skill: backend-development
+            bundle: 7523fecc-b90f-42c7-8ecb-5576df7b48ec
+          - skill: frontend-development
+            bundle: 96154330-d3fe-4a31-8797-497a8428d49a
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Grade ${{ matrix.skill }} with Rubrkit (fail under 75)
+        # Skip on fork PRs, which don't receive repository secrets.
+        if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          RUBRKIT_API_KEY: ${{ secrets.RUBRKIT_API_KEY }}
+          BUNDLE: ${{ matrix.bundle }}
+        run: npx rubrkit@latest test skills/${{ matrix.skill }} --remote --api-url https://www.rubrkit.com/api/v1 ${BUNDLE:+--artifact-bundle $BUNDLE} --fail-under 75 --ci --format junit --output rubrkit-results-${{ matrix.skill }}.xml
+      - name: Upload grading report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rubrkit-results-${{ matrix.skill }}
+          path: rubrkit-results-${{ matrix.skill }}.xml
+          if-no-files-found: ignore
